@@ -125,40 +125,40 @@ function App() {
 
   const specificServices = {
     plumbing: [
-      { id: 'toilet', name: 'Toilet Repair', price: '₱45', icon: '🚽' },
-      { id: 'shower', name: 'Shower/Bath Issues', price: '₱55', icon: '🚿' },
-      { id: 'drain', name: 'Drain Unclog', price: '₱35', icon: '🕳️' },
-      { id: 'pipe', name: 'Pipe Installation', price: '₱75', icon: '🔧' }
+      { id: 'toilet', name: 'Toilet Repair', price: 'S$80', icon: '🚽' },
+      { id: 'shower', name: 'Shower/Bath Issues', price: 'S$90', icon: '🚿' },
+      { id: 'drain', name: 'Drain Unclog', price: 'S$70', icon: '🕳️' },
+      { id: 'pipe', name: 'Pipe Installation', price: 'S$120', icon: '🔧' }
     ],
     electrical: [
-      { id: 'wiring', name: 'Wiring Repair', price: '₱60', icon: '⚡' },
-      { id: 'outlet', name: 'Outlet Installation', price: '₱40', icon: '🔌' },
-      { id: 'lighting', name: 'Lighting Fixtures', price: '₱50', icon: '💡' },
-      { id: 'panel', name: 'Circuit Panel', price: '₱80', icon: '⚙️' }
+      { id: 'wiring', name: 'Wiring Repair', price: 'S$100', icon: '⚡' },
+      { id: 'outlet', name: 'Outlet Installation', price: 'S$80', icon: '🔌' },
+      { id: 'lighting', name: 'Lighting Fixtures', price: 'S$90', icon: '💡' },
+      { id: 'panel', name: 'Circuit Panel', price: 'S$150', icon: '⚙️' }
     ],
     hvac: [
-      { id: 'ac-repair', name: 'AC Repair', price: '₱70', icon: '❄️' },
-      { id: 'ac-install', name: 'AC Installation', price: '₱150', icon: '🌬️' },
-      { id: 'maintenance', name: 'Maintenance', price: '₱45', icon: '🔧' },
-      { id: 'cleaning', name: 'AC Cleaning', price: '₱40', icon: '🧹' }
+      { id: 'ac-repair', name: 'AC Repair', price: 'S$120', icon: '❄️' },
+      { id: 'ac-install', name: 'AC Installation', price: 'S$350', icon: '🌬️' },
+      { id: 'maintenance', name: 'Maintenance', price: 'S$80', icon: '🔧' },
+      { id: 'cleaning', name: 'AC Cleaning', price: 'S$60', icon: '🧹' }
     ],
     carpentry: [
-      { id: 'furniture', name: 'Furniture Repair', price: '₱55', icon: '🪑' },
-      { id: 'cabinet', name: 'Cabinet Installation', price: '₱85', icon: '🗄️' },
-      { id: 'door', name: 'Door Repair', price: '₱50', icon: '🚪' },
-      { id: 'custom', name: 'Custom Woodwork', price: '₱100', icon: '🪵' }
+      { id: 'furniture', name: 'Furniture Repair', price: 'S$90', icon: '🪑' },
+      { id: 'cabinet', name: 'Cabinet Installation', price: 'S$150', icon: '🗄️' },
+      { id: 'door', name: 'Door Repair', price: 'S$80', icon: '🚪' },
+      { id: 'custom', name: 'Custom Woodwork', price: 'S$200', icon: '🪵' }
     ],
     painting: [
-      { id: 'interior', name: 'Interior Painting', price: '₱60', icon: '🏠' },
-      { id: 'exterior', name: 'Exterior Painting', price: '₱70', icon: '🏡' },
-      { id: 'touch-up', name: 'Touch-up Work', price: '₱35', icon: '🖌️' },
-      { id: 'wallpaper', name: 'Wallpaper Install', price: '₱65', icon: '📋' }
+      { id: 'interior', name: 'Interior Painting', price: 'S$300', icon: '🏠' },
+      { id: 'exterior', name: 'Exterior Painting', price: 'S$500', icon: '🏡' },
+      { id: 'touch-up', name: 'Touch-up Work', price: 'S$80', icon: '🖌️' },
+      { id: 'wallpaper', name: 'Wallpaper Install', price: 'S$200', icon: '📋' }
     ],
     gardening: [
-      { id: 'lawn-mowing', name: 'Lawn Mowing', price: '₱40', icon: '🌱' },
-      { id: 'tree-trimming', name: 'Tree Trimming', price: '₱65', icon: '🌳' },
-      { id: 'landscaping', name: 'Landscaping', price: '₱85', icon: '🏡' },
-      { id: 'garden-maintenance', name: 'Garden Maintenance', price: '₱50', icon: '🌿' }
+      { id: 'lawn-mowing', name: 'Lawn Mowing', price: 'S$60', icon: '🌱' },
+      { id: 'tree-trimming', name: 'Tree Trimming', price: 'S$120', icon: '🌳' },
+      { id: 'landscaping', name: 'Landscaping', price: 'S$300', icon: '🏡' },
+      { id: 'garden-maintenance', name: 'Garden Maintenance', price: 'S$80', icon: '🌿' }
     ]
   }
 
@@ -293,7 +293,7 @@ function App() {
 
   const handleSpecificServiceClick = (specificService) => {
     setSelectedSpecificService(specificService)
-    const providers = matchProviders(selectedService.id, `${specificService.name} service needed`)
+    const providers = matchProviders(selectedService.id, `${specificService.name} service needed`, userLocation?.lat, userLocation?.lng)
     setMatchedProviders(providers)
     setCurrentScreen('map-providers')
   }
@@ -639,15 +639,12 @@ function App() {
             <h2>Nearby {selectedService?.name} Providers</h2>
             <p className="subtitle">{matchedProviders.providers.length} available</p>
 
-            <div className="map-container-full">
-              <div className="map-placeholder">
-                <MapPin size={24} color="#DC2626" className="user-location-pin" />
-                <div className="location-label">📍 Your location</div>
-                <div className="available-badge">{matchedProviders.providers.length} available</div>
-                {matchedProviders.providers.slice(0, 4).map((p, i) => (
-                  <MapPin key={i} size={20} color="#2563eb" className={`provider-pin pin-${i}`} />
-                ))}
-              </div>
+            <div className="map-container-interactive">
+              <ProvidersMap
+                providers={matchedProviders.providers}
+                userLocation={userLocation}
+                onProviderSelect={handleSelectProvider}
+              />
             </div>
 
             <div className="providers-header">
