@@ -6,6 +6,7 @@ import {
   ChevronRight, Tag, Phone, Video
 } from 'lucide-react'
 import { matchProviders } from './utils/providerMatching'
+import ProvidersMap from './ProvidersMap'
 import './App.css'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -63,13 +64,17 @@ function App() {
   const [profileData, setProfileData] = useState({
     name: 'John Doe',
     email: 'john.doe@email.com',
-    phone: '+63 917 123 4567',
-    address: '123 Ayala Avenue, Makati City, Metro Manila'
+    phone: '+65 9123 4567',
+    address: '123 Orchard Road, Singapore 238858'
   })
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [clarificationAnswer, setClarificationAnswer] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [cloudinaryConfig, setCloudinaryConfig] = useState(null)
+  // Geolocation — default to central Singapore (1.3521, 103.8198)
+  const [userLocation, setUserLocation] = useState({ lat: 1.3521, lng: 103.8198 })
+  const [locationLabel, setLocationLabel] = useState('Singapore')
+  const [locationPermission, setLocationPermission] = useState('pending') // 'pending' | 'granted' | 'denied'
   const fileInputRef = useRef(null)
   const recognitionRef = useRef(null)
 
@@ -79,6 +84,34 @@ function App() {
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setCloudinaryConfig(data) })
       .catch(() => {})
+  }, [])
+
+  // Request geolocation on mount
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationPermission('denied')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setLocationPermission('granted')
+        // Reverse geocode with Nominatim (free, no API key)
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+          .then(r => r.json())
+          .then(data => {
+            const suburb = data.address?.suburb || data.address?.neighbourhood || data.address?.city_district
+            const city = data.address?.city || data.address?.town || 'Singapore'
+            setLocationLabel(suburb ? `${suburb}, ${city}` : city)
+          })
+          .catch(() => {})
+      },
+      () => {
+        setLocationPermission('denied')
+        // Keep default central SG fallback
+      },
+      { timeout: 8000, maximumAge: 300000 }
+    )
   }, [])
 
   const services = [
@@ -217,7 +250,7 @@ function App() {
       const res = await fetch(`${API_BASE}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ problemText: text, mediaUrls }),
+        body: JSON.stringify({ problemText: text, mediaUrls, userLat: userLocation.lat, userLng: userLocation.lng }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Analysis failed')
@@ -227,7 +260,7 @@ function App() {
       setCurrentScreen('confirm')
     } catch (err) {
       // Fallback: use client-side matching
-      const result = matchProviders(text)
+      const result = matchProviders(text, null, userLocation.lat, userLocation.lng)
       setAiResult({
         rephrased: `${result.category} issue: ${text}`,
         category: result.category,
@@ -291,7 +324,10 @@ function App() {
           <Wrench size={32} color="#666" />
           <div className="header-text">
             <h1>HNDY</h1>
-            <p>Your handy solution, on demand</p>
+            <p className="location-bar">
+              <MapPin size={12} color={locationPermission === 'granted' ? '#10B981' : '#9CA3AF'} />
+              {locationLabel}
+            </p>
           </div>
         </div>
         <div className="user-avatar">JD</div>
@@ -414,8 +450,8 @@ function App() {
               <div className="voucher-card">
                 <div className="voucher-icon"><Tag size={24} color="#7C3AED" /></div>
                 <div className="voucher-info">
-                  <strong>₱100 off your first booking</strong>
-                  <p>Use code: <span className="voucher-code">HNDY100</span></p>
+                  <strong>S$15 off your first booking</strong>
+                  <p>Use code: <span className="voucher-code">HNDY15</span></p>
                 </div>
                 <button className="voucher-use-btn">Use</button>
               </div>
@@ -423,7 +459,7 @@ function App() {
                 <div className="voucher-icon"><Tag size={24} color="#059669" /></div>
                 <div className="voucher-info">
                   <strong>20% off plumbing services</strong>
-                  <p>Valid until Dec 31, 2025</p>
+                  <p>Valid until Dec 31, 2026</p>
                 </div>
                 <button className="voucher-use-btn">Use</button>
               </div>
@@ -522,23 +558,12 @@ function App() {
               </div>
             )}
 
-            {/* Map placeholder (replace with Google Maps embed when API key available) */}
             <div className="map-container-interactive">
-              <div className="map-view-full">
-                <div className="user-location-marker">
-                  <MapPin size={32} color="#DC2626" fill="#DC2626" />
-                  <div className="location-label">You are here</div>
-                </div>
-                {matchedProviders.providers.slice(0, 8).map((provider, i) => (
-                  <div
-                    key={provider.id}
-                    className={`provider-marker marker-${i}`}
-                    onClick={() => handleSelectProvider(provider)}
-                  >
-                    <div className="marker-number">{i + 1}</div>
-                  </div>
-                ))}
-              </div>
+              <ProvidersMap
+                userLocation={userLocation}
+                providers={matchedProviders.providers}
+                onSelectProvider={handleSelectProvider}
+              />
             </div>
 
             <div className="map-providers-list">
@@ -558,8 +583,8 @@ function App() {
                     </h4>
                     <div className="provider-stats">
                       <span><Star size={12} color="#EAB308" fill="#EAB308" /> {provider.rating}</span>
-                      <span>• {(Math.random() * 3 + 0.5).toFixed(1)} km</span>
-                      <span>• ₱{provider.hourlyRate}/hr</span>
+                      <span>• {provider.distanceLabel || '—'}</span>
+                      <span>• {provider.priceRange}</span>
                     </div>
                   </div>
                   <button className="view-profile-btn" onClick={(e) => {
@@ -638,12 +663,12 @@ function App() {
                     <h3>{provider.name}</h3>
                     <div className="provider-meta">
                       <span><Star size={14} color="#EAB308" fill="#EAB308" /> {provider.rating} ({provider.reviews})</span>
-                      <span>• 1.2 km away</span>
+                      <span>• {provider.distanceLabel || '—'}</span>
                     </div>
                     <p className="provider-specialty">{provider.specialty}</p>
                     <p className="availability">✅ Available now</p>
                   </div>
-                  <div className="provider-rate">₱{provider.hourlyRate}/hr</div>
+                  <div className="provider-rate">{provider.priceRange}</div>
                 </div>
               ))}
             </div>
@@ -664,7 +689,7 @@ function App() {
                     <h3>{provider.name}</h3>
                     <div className="provider-meta">
                       <span><Star size={14} color="#EAB308" fill="#EAB308" /> {provider.rating} ({provider.reviews})</span>
-                      <span><DollarSign size={14} /> ₱{provider.hourlyRate}/hr</span>
+                      <span>{provider.priceRange}</span>
                       <span><Clock size={14} /> {provider.experience}</span>
                     </div>
                     <p className="provider-specialty">{provider.specialty}</p>
@@ -686,7 +711,7 @@ function App() {
               <div>
                 <h2>{selectedProvider.name}</h2>
                 <p><Star size={16} color="#EAB308" fill="#EAB308" /> {selectedProvider.rating} • {selectedProvider.experience}</p>
-                <p className="rate">₱{selectedProvider.hourlyRate}/hour</p>
+                  <p className="rate">{selectedProvider.priceRange}</p>
               </div>
             </div>
 
@@ -758,8 +783,8 @@ function App() {
                 </div>
                 <div className="booking-details">
                   <p>📅 Nov 26, 2025 at 10:00 AM</p>
-                  <p>📍 123 Ayala Ave, Makati City</p>
-                  <p>💰 ₱45/hr • Estimated 2 hours</p>
+                  <p>📍 123 Orchard Road, Singapore</p>
+                  <p>💰 S$70/hr • Estimated 2 hours</p>
                 </div>
               </div>
               <div className="booking-card" onClick={() => {
@@ -775,8 +800,8 @@ function App() {
                 </div>
                 <div className="booking-details">
                   <p>📅 Nov 28, 2025 at 2:00 PM</p>
-                  <p>📍 456 Ortigas Center, Pasig</p>
-                  <p>💰 ₱60/hr • Estimated 3 hours</p>
+                  <p>📍 456 Tampines Ave 1, Singapore</p>
+                  <p>💰 S$80/hr • Estimated 3 hours</p>
                 </div>
               </div>
             </div>
@@ -876,8 +901,8 @@ function App() {
               <div className="voucher-card">
                 <div className="voucher-icon"><Tag size={20} color="#7C3AED" /></div>
                 <div className="voucher-info">
-                  <strong>₱100 off first booking</strong>
-                  <p>Code: <span className="voucher-code">HNDY100</span></p>
+                  <strong>S$15 off first booking</strong>
+                  <p>Code: <span className="voucher-code">HNDY15</span></p>
                 </div>
                 <span className="voucher-status active">Active</span>
               </div>
@@ -890,7 +915,7 @@ function App() {
                 <span className="default-badge">Default</span>
               </div>
               <div className="payment-method">
-                <p>💳 GCash - 0917 123 4567</p>
+                <p>💳 PayNow - +65 9123 4567</p>
               </div>
             </div>
 

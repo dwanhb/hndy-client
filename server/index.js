@@ -65,7 +65,7 @@ app.get('/api/cloudinary-signature', (req, res) => {
 
 // ─── AI Analysis endpoint ─────────────────────────────────────────────────────
 app.post('/api/analyze', async (req, res) => {
-  const { problemText, mediaUrls = [] } = req.body;
+  const { problemText, mediaUrls = [], userLat, userLng } = req.body;
 
   if (!problemText || problemText.trim().length < 5) {
     return res.status(400).json({ error: 'Problem description is too short.' });
@@ -73,7 +73,7 @@ app.post('/api/analyze', async (req, res) => {
 
   // If no Gemini key, use rule-based fallback
   if (!process.env.GEMINI_API_KEY) {
-    const result = matchProviders(problemText);
+    const result = matchProviders(problemText, null, userLat, userLng);
     return res.json({
       rephrased: `${result.category.toLowerCase()} issue: ${problemText}`,
       category: result.category,
@@ -86,7 +86,7 @@ app.post('/api/analyze', async (req, res) => {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite' });
 
     const mediaContext = mediaUrls.length > 0
       ? `The user has also uploaded ${mediaUrls.length} photo(s)/video(s) showing the issue.`
@@ -117,7 +117,7 @@ If the problem is too vague to categorize, set needsClarification to true and pr
     const parsed = JSON.parse(cleaned);
 
     // Match providers based on AI-detected category and original text
-    const matched = matchProviders(problemText, parsed.category);
+    const matched = matchProviders(problemText, parsed.category, userLat, userLng);
 
     res.json({
       rephrased: parsed.rephrased,
@@ -131,7 +131,7 @@ If the problem is too vague to categorize, set needsClarification to true and pr
   } catch (err) {
     console.error('Gemini error:', err.message);
     // Graceful fallback
-    const result = matchProviders(problemText);
+    const result = matchProviders(problemText, null, userLat, userLng);
     res.json({
       rephrased: `A ${result.category.toLowerCase()} issue has been reported: ${problemText.slice(0, 100)}`,
       category: result.category,

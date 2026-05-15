@@ -60,6 +60,14 @@ body {
   margin: 4px 0 0 0;
 }
 
+.location-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #555;
+}
+
 .user-avatar {
   width: 40px;
   height: 40px;
@@ -554,9 +562,11 @@ body {
 }
 
 .map-container-interactive {
+  height: 260px;
   margin: 0 0 20px 0;
   border-radius: 12px;
   overflow: hidden;
+  z-index: 0;
 }
 
 .map-view-full {
