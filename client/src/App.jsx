@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useAuth } from './hooks/useAuth'
+import AuthScreen from './AuthScreen'
 import {
   Wrench, Droplet, Zap, Hammer, Paintbrush, Home, Calendar,
   MessageCircle, User, Send, Paperclip, MapPin, Star, DollarSign,
@@ -48,6 +50,7 @@ function UrgencyBadge({ urgency }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
+  const { user, loading: authLoading, signup, login, logout, updateProfile } = useAuth()
   const [currentScreen, setCurrentScreen] = useState('home')
   const [selectedService, setSelectedService] = useState(null)
   const [selectedSpecificService, setSelectedSpecificService] = useState(null)
@@ -62,11 +65,13 @@ function App() {
   const [chatInput, setChatInput] = useState('')
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [profileData, setProfileData] = useState({
-    name: 'John Doe',
-    email: 'john.doe@email.com',
-    phone: '+65 9123 4567',
-    address: '123 Orchard Road, Singapore 238858'
+    name: '',
+    email: '',
+    phone: '',
+    address: ''
   })
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [clarificationAnswer, setClarificationAnswer] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -77,6 +82,18 @@ function App() {
   const [locationPermission, setLocationPermission] = useState('pending') // 'pending' | 'granted' | 'denied'
   const fileInputRef = useRef(null)
   const recognitionRef = useRef(null)
+
+  // Sync profileData with real user whenever user changes
+  useEffect(() => {
+    if (user) {
+      setProfileData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        address: user.address || '',
+      })
+    }
+  }, [user])
 
   // Fetch Cloudinary config on mount
   useEffect(() => {
@@ -316,6 +333,32 @@ function App() {
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────
+
+  // Show loading spinner while checking stored token
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Loader2 size={40} color="white" className="spin" />
+      </div>
+    )
+  }
+
+  // Show auth screen if not logged in
+  if (!user) {
+    return (
+      <AuthScreen
+        onAuth={async (mode, form) => {
+          if (mode === 'signup') await signup(form)
+          else await login(form)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="app">
       {/* Header */}
@@ -330,7 +373,9 @@ function App() {
             </p>
           </div>
         </div>
-        <div className="user-avatar">JD</div>
+        <div className="user-avatar" onClick={() => setCurrentScreen('profile')} style={{ cursor: 'pointer' }}>
+          {user ? user.avatar_initials : '?'}
+        </div>
       </div>
 
       {/* Main Content */}
@@ -880,9 +925,29 @@ function App() {
                       />
                     </div>
                   ))}
+                  {profileError && (
+                    <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 8 }}>{profileError}</p>
+                  )}
                   <div className="profile-actions">
-                    <button className="save-btn" onClick={() => setIsEditingProfile(false)}>Save Changes</button>
-                    <button className="cancel-btn" onClick={() => setIsEditingProfile(false)}>Cancel</button>
+                    <button className="save-btn" disabled={profileSaving} onClick={async () => {
+                      setProfileSaving(true)
+                      setProfileError('')
+                      try {
+                        await updateProfile({ name: profileData.name, phone: profileData.phone, address: profileData.address })
+                        setIsEditingProfile(false)
+                      } catch (err) {
+                        setProfileError(err.message)
+                      } finally {
+                        setProfileSaving(false)
+                      }
+                    }}>
+                      {profileSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                    <button className="cancel-btn" onClick={() => {
+                      setIsEditingProfile(false)
+                      setProfileError('')
+                      if (user) setProfileData({ name: user.name || '', email: user.email || '', phone: user.phone || '', address: user.address || '' })
+                    }}>Cancel</button>
                   </div>
                 </>
               ) : (
@@ -926,7 +991,10 @@ function App() {
               ))}
             </div>
 
-            <button className="logout-btn">Log Out</button>
+            <button className="logout-btn" onClick={() => {
+              logout()
+              setCurrentScreen('home')
+            }}>Log Out</button>
           </div>
         )}
 

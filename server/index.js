@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v2 as cloudinary } from 'cloudinary';
 import { providers } from './data/providers.js';
 import { matchProviders } from './utils/providerMatching.js';
+import authRouter from './routes/auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,6 +24,9 @@ cloudinary.config({
 
 // Configure Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+
+// ─── Auth routes ─────────────────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
