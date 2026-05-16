@@ -6,6 +6,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { providers } from './data/providers.js';
 import { matchProviders } from './utils/providerMatching.js';
 import authRouter from './routes/auth.js';
+import bookingsRouter from './routes/bookings.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // ─── Auth routes ─────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
+app.use('/api/bookings', bookingsRouter);
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {

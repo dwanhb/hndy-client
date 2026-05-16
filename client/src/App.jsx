@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useAuth } from './hooks/useAuth'
+import { useBookings } from './hooks/useBookings'
 import AuthScreen from './AuthScreen'
 import {
   Wrench, Droplet, Zap, Hammer, Paintbrush, Home, Calendar,
@@ -51,6 +52,13 @@ function UrgencyBadge({ urgency }) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const { user, loading: authLoading, signup, login, logout, updateProfile } = useAuth()
+  const { bookings, loading: bookingsLoading, fetchBookings, createBooking, cancelBooking: cancelBookingApi, validateVoucher } = useBookings()
+  const [bookingSubmitting, setBookingSubmitting] = useState(false)
+  const [bookingError, setBookingError] = useState('')
+  const [voucherCode, setVoucherCode] = useState('')
+  const [voucherApplied, setVoucherApplied] = useState(null) // { code, discount, description }
+  const [voucherError, setVoucherError] = useState('')
+  const [voucherLoading, setVoucherLoading] = useState(false)
   const [currentScreen, setCurrentScreen] = useState('home')
   const [selectedService, setSelectedService] = useState(null)
   const [selectedSpecificService, setSelectedSpecificService] = useState(null)
@@ -82,6 +90,11 @@ function App() {
   const [locationPermission, setLocationPermission] = useState('pending') // 'pending' | 'granted' | 'denied'
   const fileInputRef = useRef(null)
   const recognitionRef = useRef(null)
+
+  // Fetch bookings when user is available
+  useEffect(() => {
+    if (user) fetchBookings()
+  }, [user, fetchBookings])
 
   // Sync profileData with real user whenever user changes
   useEffect(() => {
@@ -320,16 +333,60 @@ function App() {
     setCurrentScreen('booking')
   }
 
-  const handleBooking = () => {
-    alert(`Booking confirmed with ${selectedProvider.name}!\nDate: ${bookingData.date}\nTime: ${bookingData.time}`)
-    setCurrentScreen('home')
-    setSelectedService(null)
-    setMatchedProviders(null)
-    setSelectedProvider(null)
-    setBookingData({ date: '', time: '', notes: '' })
-    setUploadedFiles([])
-    setUserInput('')
-    setAiResult(null)
+  const handleApplyVoucher = async () => {
+    if (!voucherCode.trim()) return
+    setVoucherLoading(true)
+    setVoucherError('')
+    setVoucherApplied(null)
+    try {
+      const voucher = await validateVoucher(voucherCode.trim())
+      setVoucherApplied(voucher)
+    } catch (err) {
+      setVoucherError(err.message)
+    } finally {
+      setVoucherLoading(false)
+    }
+  }
+
+  const handleBooking = async () => {
+    if (!bookingData.date || !bookingData.time) return
+    setBookingSubmitting(true)
+    setBookingError('')
+    try {
+      // Parse rate from provider priceRange e.g. "S$80/hr"
+      const rateMatch = selectedProvider.priceRange?.match(/S\$(\d+)/)
+      const ratePerHour = rateMatch ? parseInt(rateMatch[1]) : 80
+      // Build UTC timestamp from date + time
+      const scheduledAt = new Date(`${bookingData.date}T${bookingData.time}:00`).getTime()
+      await createBooking({
+        providerId: selectedProvider.id,
+        providerName: selectedProvider.name,
+        service: selectedSpecificService?.name || aiResult?.category || selectedService?.name || 'Home Service',
+        category: aiResult?.category || selectedService?.name || 'General',
+        scheduledAt,
+        notes: bookingData.notes,
+        address: user?.address || '',
+        voucherCode: voucherApplied?.code || null,
+        ratePerHour,
+        estimatedHrs: 2,
+      })
+      // Reset flow and navigate to bookings
+      setCurrentScreen('bookings')
+      setSelectedService(null)
+      setMatchedProviders(null)
+      setSelectedProvider(null)
+      setBookingData({ date: '', time: '', notes: '' })
+      setVoucherCode('')
+      setVoucherApplied(null)
+      setVoucherError('')
+      setUploadedFiles([])
+      setUserInput('')
+      setAiResult(null)
+    } catch (err) {
+      setBookingError(err.message)
+    } finally {
+      setBookingSubmitting(false)
+    }
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -790,81 +847,162 @@ function App() {
               <div className="form-group">
                 <label>Voucher Code (optional)</label>
                 <div className="voucher-input-row">
-                  <input type="text" placeholder="e.g. HNDY100" />
-                  <button className="apply-voucher-btn">Apply</button>
+                  <input
+                    type="text"
+                    placeholder="e.g. HNDY15"
+                    value={voucherCode}
+                    onChange={e => { setVoucherCode(e.target.value); setVoucherApplied(null); setVoucherError('') }}
+                    disabled={!!voucherApplied}
+                  />
+                  {voucherApplied ? (
+                    <button className="apply-voucher-btn" style={{ background: '#EF4444' }}
+                      onClick={() => { setVoucherApplied(null); setVoucherCode('') }}>
+                      Remove
+                    </button>
+                  ) : (
+                    <button className="apply-voucher-btn" onClick={handleApplyVoucher} disabled={voucherLoading || !voucherCode.trim()}>
+                      {voucherLoading ? '...' : 'Apply'}
+                    </button>
+                  )}
                 </div>
+                {voucherApplied && (
+                  <p style={{ color: '#10B981', fontSize: 13, marginTop: 4 }}>
+                    ✓ {voucherApplied.description} (−S${voucherApplied.discount})
+                  </p>
+                )}
+                {voucherError && (
+                  <p style={{ color: '#EF4444', fontSize: 13, marginTop: 4 }}>{voucherError}</p>
+                )}
               </div>
+
+              {/* Price summary */}
+              {bookingData.date && bookingData.time && (() => {
+                const rateMatch = selectedProvider?.priceRange?.match(/S\$(\d+)/)
+                const rate = rateMatch ? parseInt(rateMatch[1]) : 80
+                const subtotal = rate * 2
+                const discount = voucherApplied?.discount || 0
+                const total = Math.max(0, subtotal - discount)
+                return (
+                  <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '12px 16px', marginBottom: 12, fontSize: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ color: '#6B7280' }}>S${rate}/hr × 2 hrs</span>
+                      <span>S${subtotal}</span>
+                    </div>
+                    {discount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: '#10B981' }}>
+                        <span>Voucher discount</span>
+                        <span>−S${discount}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #E5E7EB', paddingTop: 6, marginTop: 4 }}>
+                      <span>Estimated Total</span>
+                      <span>S${total}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {bookingError && (
+                <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 8 }}>{bookingError}</p>
+              )}
 
               <button
                 className="book-btn"
                 onClick={handleBooking}
-                disabled={!bookingData.date || !bookingData.time}
+                disabled={!bookingData.date || !bookingData.time || bookingSubmitting}
               >
-                Confirm Booking
+                {bookingSubmitting ? 'Confirming...' : 'Confirm Booking'}
               </button>
             </div>
           </div>
         )}
 
         {/* ── BOOKINGS SCREEN ──────────────────────────────────────────────── */}
-        {currentScreen === 'bookings' && (
-          <div className="bookings-screen">
-            <h2>Your Bookings</h2>
-            <div className="bookings-section">
-              <h3>Upcoming</h3>
-              <div className="booking-card" onClick={() => {
-                setSelectedChatContact({ name: 'Sarah Chen', avatar: 'SC', service: 'Toilet Repair' })
-                setCurrentScreen('chat')
-              }} style={{ cursor: 'pointer' }}>
-                <div className="booking-header">
-                  <div>
-                    <strong>Toilet Repair</strong>
-                    <p className="booking-provider">Sarah Chen • Plumbing</p>
-                  </div>
-                  <span className="booking-status confirmed">Confirmed</span>
+        {currentScreen === 'bookings' && (() => {
+          const now = Date.now()
+          const upcoming = bookings.filter(b => b.scheduled_at >= now && b.status !== 'cancelled' && b.status !== 'completed')
+          const past = bookings.filter(b => b.scheduled_at < now || b.status === 'completed' || b.status === 'cancelled')
+          const statusLabel = { pending: 'Pending', confirmed: 'Confirmed', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' }
+          const statusClass = { pending: 'pending', confirmed: 'confirmed', in_progress: 'confirmed', completed: 'completed', cancelled: 'cancelled' }
+          return (
+            <div className="bookings-screen">
+              <h2>Your Bookings</h2>
+              {bookingsLoading && <p style={{ textAlign: 'center', color: '#6B7280', padding: 24 }}>Loading...</p>}
+              {!bookingsLoading && bookings.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '48px 24px', color: '#6B7280' }}>
+                  <Calendar size={48} color="#D1D5DB" style={{ marginBottom: 12 }} />
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>No bookings yet</p>
+                  <p style={{ fontSize: 14 }}>Book a service to get started</p>
+                  <button className="book-btn" style={{ marginTop: 16, maxWidth: 200 }} onClick={() => setCurrentScreen('home')}>Browse Services</button>
                 </div>
-                <div className="booking-details">
-                  <p>📅 Nov 26, 2025 at 10:00 AM</p>
-                  <p>📍 123 Orchard Road, Singapore</p>
-                  <p>💰 S$70/hr • Estimated 2 hours</p>
+              )}
+              {upcoming.length > 0 && (
+                <div className="bookings-section">
+                  <h3>Upcoming</h3>
+                  {upcoming.map(b => (
+                    <div key={b.id} className="booking-card">
+                      <div className="booking-header">
+                        <div>
+                          <strong>{b.service}</strong>
+                          <p className="booking-provider">{b.provider_name} • {b.category}</p>
+                        </div>
+                        <span className={`booking-status ${statusClass[b.status]}`}>{statusLabel[b.status]}</span>
+                      </div>
+                      <div className="booking-details">
+                        <p>📅 {new Date(b.scheduled_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                        {b.address && <p>📍 {b.address}</p>}
+                        <p>💰 S${b.rate_per_hour}/hr × {b.estimated_hrs} hrs
+                          {b.discount_sgd > 0 && <span style={{ color: '#10B981' }}> (−S${b.discount_sgd} voucher)</span>}
+                          {' '}= <strong>S${Math.max(0, b.rate_per_hour * b.estimated_hrs - b.discount_sgd)}</strong>
+                        </p>
+                        {b.notes && <p style={{ color: '#6B7280', fontSize: 13 }}>📝 {b.notes}</p>}
+                      </div>
+                      {(b.status === 'pending' || b.status === 'confirmed') && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button
+                            style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid #EF4444', background: 'white', color: '#EF4444', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                            onClick={async () => {
+                              if (window.confirm('Cancel this booking?')) {
+                                try { await cancelBookingApi(b.id) } catch (e) { alert(e.message) }
+                              }
+                            }}
+                          >Cancel</button>
+                          <button
+                            style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                            onClick={() => {
+                              setSelectedChatContact({ name: b.provider_name, avatar: b.provider_name.split(' ').map(n => n[0]).join(''), service: b.service })
+                              setCurrentScreen('chat')
+                            }}
+                          >Message</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-              <div className="booking-card" onClick={() => {
-                setSelectedChatContact({ name: 'John Smith', avatar: 'JS', service: 'Electrical Wiring' })
-                setCurrentScreen('chat')
-              }} style={{ cursor: 'pointer' }}>
-                <div className="booking-header">
-                  <div>
-                    <strong>Electrical Wiring</strong>
-                    <p className="booking-provider">John Smith • Electrical</p>
-                  </div>
-                  <span className="booking-status confirmed">Confirmed</span>
+              )}
+              {past.length > 0 && (
+                <div className="bookings-section">
+                  <h3>Past</h3>
+                  {past.map(b => (
+                    <div key={b.id} className="booking-card">
+                      <div className="booking-header">
+                        <div>
+                          <strong>{b.service}</strong>
+                          <p className="booking-provider">{b.provider_name} • {b.category}</p>
+                        </div>
+                        <span className={`booking-status ${statusClass[b.status]}`}>{statusLabel[b.status]}</span>
+                      </div>
+                      <div className="booking-details">
+                        <p>📅 {new Date(b.scheduled_at).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                        <p>💰 S${Math.max(0, b.rate_per_hour * b.estimated_hrs - b.discount_sgd)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="booking-details">
-                  <p>📅 Nov 28, 2025 at 2:00 PM</p>
-                  <p>📍 456 Tampines Ave 1, Singapore</p>
-                  <p>💰 S$80/hr • Estimated 3 hours</p>
-                </div>
-              </div>
+              )}
             </div>
-            <div className="bookings-section">
-              <h3>Past</h3>
-              <div className="booking-card">
-                <div className="booking-header">
-                  <div>
-                    <strong>Drain Unclog</strong>
-                    <p className="booking-provider">Mike Rodriguez • Plumbing</p>
-                  </div>
-                  <span className="booking-status completed">Completed</span>
-                </div>
-                <div className="booking-details">
-                  <p>📅 Nov 20, 2025 at 9:00 AM</p>
-                  <p>⭐ Rated 5.0</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* ── MESSAGES SCREEN ──────────────────────────────────────────────── */}
         {currentScreen === 'messages' && (
