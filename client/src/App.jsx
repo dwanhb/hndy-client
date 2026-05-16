@@ -13,7 +13,7 @@ import ProvidersMap from './ProvidersMap'
 import './App.css'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const API_BASE = '/api'
+const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 // ─── Cloudinary direct upload (unsigned) ─────────────────────────────────────
 async function uploadToCloudinary(file, cloudName, uploadPreset) {

@@ -14,11 +14,19 @@ const router = express.Router()
 // All booking routes require authentication
 router.use(requireAuth)
 
+// ─── POST /api/bookings/validate-voucher ─────────────────────────────────────
+// Must be before /:id routes to avoid being caught by them
+router.post('/validate-voucher', (req, res) => {
+  const { code } = req.body
+  const voucher = validateVoucher(code)
+  if (!voucher) return res.status(404).json({ error: 'Invalid or expired voucher code' })
+  res.json({ voucher })
+})
+
 // ─── GET /api/bookings ────────────────────────────────────────────────────────
-// List all bookings for the logged-in user
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const bookings = getBookingsByUser(req.userId)
+    const bookings = await getBookingsByUser(req.userId)
     res.json({ bookings })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -26,8 +34,7 @@ router.get('/', (req, res) => {
 })
 
 // ─── POST /api/bookings ───────────────────────────────────────────────────────
-// Create a new booking
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const {
     providerId, providerName, service, category,
     scheduledAt, notes, address,
@@ -38,7 +45,6 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Missing required booking fields' })
   }
 
-  // Validate voucher if provided
   let discountSgd = 0
   if (voucherCode) {
     const voucher = validateVoucher(voucherCode)
@@ -47,7 +53,7 @@ router.post('/', (req, res) => {
   }
 
   try {
-    const booking = createBooking({
+    const booking = await createBooking({
       userId: req.userId,
       providerId, providerName, service, category,
       scheduledAt, notes, address,
@@ -61,21 +67,24 @@ router.post('/', (req, res) => {
 })
 
 // ─── GET /api/bookings/:id ────────────────────────────────────────────────────
-router.get('/:id', (req, res) => {
-  const booking = getBookingById(parseInt(req.params.id))
-  if (!booking || booking.user_id !== req.userId) {
-    return res.status(404).json({ error: 'Booking not found' })
+router.get('/:id', async (req, res) => {
+  try {
+    const booking = await getBookingById(parseInt(req.params.id))
+    if (!booking || booking.user_id !== req.userId) {
+      return res.status(404).json({ error: 'Booking not found' })
+    }
+    res.json({ booking })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
-  res.json({ booking })
 })
 
 // ─── PATCH /api/bookings/:id/status ──────────────────────────────────────────
-// Advance booking through state machine
-router.patch('/:id/status', (req, res) => {
+router.patch('/:id/status', async (req, res) => {
   const { status } = req.body
   if (!status) return res.status(400).json({ error: 'status is required' })
   try {
-    const booking = transitionBooking(parseInt(req.params.id), req.userId, status)
+    const booking = await transitionBooking(parseInt(req.params.id), req.userId, status)
     res.json({ booking })
   } catch (err) {
     const code = err.message === 'Booking not found' ? 404
@@ -85,24 +94,15 @@ router.patch('/:id/status', (req, res) => {
 })
 
 // ─── DELETE /api/bookings/:id ─────────────────────────────────────────────────
-// Cancel a booking (soft delete via state machine)
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const booking = cancelBooking(parseInt(req.params.id), req.userId)
+    const booking = await cancelBooking(parseInt(req.params.id), req.userId)
     res.json({ booking })
   } catch (err) {
     const code = err.message === 'Booking not found' ? 404
       : err.message === 'Forbidden' ? 403 : 400
     res.status(code).json({ error: err.message })
   }
-})
-
-// ─── POST /api/bookings/validate-voucher ─────────────────────────────────────
-router.post('/validate-voucher', (req, res) => {
-  const { code } = req.body
-  const voucher = validateVoucher(code)
-  if (!voucher) return res.status(404).json({ error: 'Invalid or expired voucher code' })
-  res.json({ voucher })
 })
 
 export default router

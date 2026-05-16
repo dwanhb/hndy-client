@@ -1,0 +1,18 @@
+# Railway Nixpacks config for HNDY monorepo
+# This builds the Express backend (Node.js service).
+# The React frontend (client/) is deployed as a separate static site.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "cd server && npm install"
+]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "node server/index.js"
